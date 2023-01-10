@@ -1,19 +1,66 @@
+var websocket = null;
+var isLast = false;
+var callOnMessage = null;
+
+function connectWebSocket() {
+    websocket = new WebSocket("ws://localhost:9000/websocket");
+    websocket.onopen = function(event) {
+        console.log("Connected to Websocket");
+        getGamePage(updateGamePage, false);
+    }
+
+    websocket.onclose = function () {
+        console.log('Connection with Websocket Closed!');
+    };
+
+    websocket.onerror = function (error) {
+        console.log('Error in Websocket Occured: ' + error);
+    };
+
+    websocket.onmessage = function (e) {
+        console.log(e.data)
+        if (typeof e.data === "string") {
+            if (callOnMessage != null) {
+                callOnMessage(e.data, isLast)
+            }
+        }
+
+    };
+}
+
+$(document).ready(function() {
+    connectWebSocket()
+});
+
 function getGamePage(cFunction, last) {
-    $.ajax({
-        url:"getGamePage",
-        type:"GET",
-        contentType:"text/plain",
-        success: function(data) {cFunction(data, last);}
-    })
+    let query = {
+                    "action": "state",
+                    "message": ""
+                }
+    console.log(query);
+    if(websocket.readyState == WebSocket.OPEN) {
+        callOnMessage = cFunction;
+        isLast = last;
+        websocket.send(JSON.stringify(query));
+    } else {
+        console.log("Could not send data. Websocket is not open.");
+        setTimeout(connectWebSocket, 500)
+        setTimeout(function() {getGamePage(cFunction, last)}, 700)
+    }
 }
 
 function evaluate(input, cFunction) {
-    $.ajax({
-        url:"eval/"+input,
-        type:"POST",
-        contentType:"text/plain",
-        success: function() {cFunction();}
-    })
+    let query = {
+                    "action": "eval",
+                    "message": String(input)
+                };
+    console.log(query);
+    if(websocket.readyState == WebSocket.OPEN) {
+        callOnMessage = cFunction;
+        websocket.send(JSON.stringify(query));
+    } else {
+        console.log("Could not send data. Websocket is not open.");
+    }
 }
 
 function updateGamePage(data, last) {
@@ -67,9 +114,6 @@ function updateGamePage(data, last) {
             break;
         }
     }
-
-
-
 }
 
 function cardClicked(card) {
@@ -122,5 +166,3 @@ function showPlayedCard(data, last) {
 function nextCard() {
     evaluate("next", function () {getGamePage(updateGamePage,false)});
 }
-
-getGamePage(updateGamePage, false);

@@ -8,6 +8,7 @@ import play.api.libs.json.{JsArray, JsBoolean, JsNumber, JsString, JsValue, Json
 import play.api.libs.streams.ActorFlow
 import view.CaHMain
 import play.api.mvc._
+import play.api.libs.json._
 import play.twirl.api.Html
 import view.CaHMain.controller
 
@@ -46,7 +47,7 @@ class CahController @Inject()(cc: ControllerComponents)(implicit system: ActorSy
   }
 
 
-  def socket = WebSocket.accept[String, String] { request =>
+  def socket = WebSocket.accept[JsValue, JsValue] { request =>
     ActorFlow.actorRef { out =>
       println("Connect received")
       CahWebSocketActorFactory.create(out)
@@ -59,92 +60,55 @@ class CahController @Inject()(cc: ControllerComponents)(implicit system: ActorSy
     }
   }
 
-    class CahWebSocketActor(out: ActorRef) extends Actor with Reactor {
-      listenTo(gameController)
-      def receive = {
-        case msg: String =>
-          if (msg.isEmpty) {
-            println("empty message")
-          } else if (msg == "opening connection") {
-            println("opening message")
-          } else {
-            gameController.eval(msg)
-            println(msg)
-          }
-
-          reactions += {
-            case event: UpdateGuiEvent => getGamePage
-          }
-
-
-          def getGamePage= {
-
-            out ! Json.obj("game" -> Json.obj(
-              "numberOfPlayers" -> JsNumber(gameController.getGameManager().numberOfPlayers),
-              "numberOfPlayableRounds" -> JsNumber(gameController.getGameManager().numberOfPlayableRounds),
-              "numberOfRounds" -> JsNumber(gameController.getGameManager().numberOfRounds),
-              "activePlayer" -> JsNumber(gameController.getGameManager().activePlayer),
-              "kompositumCard" -> Json.obj("cardList" -> Json.obj(
-                "questionCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[QuestionCard]) yield
-                  JsString(card.toString)
-                ),
-                "answerCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[AnswerCard]) yield
-                  JsString(card.toString)
-                )
-              )),
-              "player" -> JsArray(for (dude <- gameController.getGameManager().player) yield Json.obj(
-                "name" -> dude.name,
-                "state" -> JsBoolean(dude.isAnswering),
-                "playerCards" -> JsArray(for (card <- dude.playerCards) yield JsString(card.toString))
-              )),
-              "answerList" -> JsArray(for (card <- gameController.getGameManager().answerList) yield JsString(card.toString)),
-              "questionList" -> JsArray(for (card <- gameController.getGameManager().questionList) yield JsString(card.toString)),
-              "roundAnswerCards" -> JsArray(for (mapping <- gameController.getGameManager().roundAnswerCards.toList) yield Json.obj(
-                "name" -> mapping._1.name.toString,
-                "placedCard" -> mapping._2.toString)
-              ),
-              "roundQuestion" -> JsString(gameController.getGameManager().roundQuestion)
-            )).toString()
-          }
-
-
-
-
-      }
+  class CahWebSocketActor(out: ActorRef) extends Actor {
+    def receive: Receive = {
+      case jsValue: JsValue =>
+        println(jsValue)
+        val action = (jsValue \ "action").as[String]
+        val message = (jsValue \ "message").as[String]
+        action match {
+          case "eval" =>
+            println("request: eval " + message)
+            gameController.eval(message)
+            out ! (getGamePage)
+          case "next" =>
+            println("request: next")
+            gameController.eval("weiter")
+            out ! (getGamePage)
+          case "state" =>
+            println("request: game state")
+            out ! (getGamePage)
+        }
     }
+  }
 
-
-//  def getGamePage(): Action[AnyContent] = Action {
-//
-//    def jsonOut = Json.obj("game" -> Json.obj(
-//      "numberOfPlayers" -> JsNumber(gameController.getGameManager().numberOfPlayers),
-//      "numberOfPlayableRounds" -> JsNumber(gameController.getGameManager().numberOfPlayableRounds),
-//      "numberOfRounds" -> JsNumber(gameController.getGameManager().numberOfRounds),
-//      "activePlayer" -> JsNumber(gameController.getGameManager().activePlayer),
-//      "kompositumCard" -> Json.obj("cardList" -> Json.obj(
-//        "questionCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[QuestionCard]) yield
-//          JsString(card.toString)
-//        ),
-//        "answerCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[AnswerCard]) yield
-//          JsString(card.toString)
-//        )
-//      )),
-//      "player" -> JsArray(for (dude <- gameController.getGameManager().player) yield Json.obj(
-//      "name" -> dude.name,
-//      "state" -> JsBoolean(dude.isAnswering),
-//      "playerCards" -> JsArray(for (card <- dude.playerCards )yield JsString(card.toString))
-//    ) ),
-//    "answerList" -> JsArray(for (card <- gameController.getGameManager().answerList ) yield JsString(card.toString)),
-//    "questionList" -> JsArray(for (card <- gameController.getGameManager().questionList )yield JsString(card.toString)),
-//    "roundAnswerCards" -> JsArray(for (mapping <- gameController.getGameManager().roundAnswerCards.toList) yield Json.obj(
-//      "name" -> mapping._1.name.toString,
-//      "placedCard" -> mapping._2.toString)
-//    ),
-//    "roundQuestion" -> JsString(gameController.getGameManager().roundQuestion)
-//    ) ).toString()
-//
-//    return (jsonOut)
-//
-//  }
+  def getGamePage: JsValue = {
+    Json.obj("game" -> Json.obj(
+      "numberOfPlayers" -> JsNumber(gameController.getGameManager().numberOfPlayers),
+      "numberOfPlayableRounds" -> JsNumber(gameController.getGameManager().numberOfPlayableRounds),
+      "numberOfRounds" -> JsNumber(gameController.getGameManager().numberOfRounds),
+      "activePlayer" -> JsNumber(gameController.getGameManager().activePlayer),
+      "kompositumCard" -> Json.obj("cardList" -> Json.obj(
+        "questionCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[QuestionCard]) yield
+          JsString(card.toString)
+        ),
+        "answerCards" -> JsArray(for (card <- gameController.getGameManager().kompositumCard.cardList if card.isInstanceOf[AnswerCard]) yield
+          JsString(card.toString)
+        )
+      )),
+      "player" -> JsArray(for (dude <- gameController.getGameManager().player) yield Json.obj(
+        "name" -> dude.name,
+        "state" -> JsBoolean(dude.isAnswering),
+        "playerCards" -> JsArray(for (card <- dude.playerCards) yield JsString(card.toString))
+      )),
+      "answerList" -> JsArray(for (card <- gameController.getGameManager().answerList) yield JsString(card.toString)),
+      "questionList" -> JsArray(for (card <- gameController.getGameManager().questionList) yield JsString(card.toString)),
+      "roundAnswerCards" -> JsArray(for (mapping <- gameController.getGameManager().roundAnswerCards.toList) yield Json.obj(
+        "name" -> mapping._1.name.toString,
+        "placedCard" -> mapping._2.toString)
+      ),
+      "roundQuestion" -> JsString(gameController.getGameManager().roundQuestion)
+    ))
+  }
 }
 

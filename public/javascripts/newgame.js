@@ -45,8 +45,17 @@ function addName() {
 }
 
 function evaluate(input, cFunction) {
-    websocket.send(input);
-    cFunction();
+    let query = {
+                    "action": "eval",
+                    "message": input
+                }
+    console.log(query)
+    if(websocket.readyState == WebSocket.OPEN) {
+        websocket.send(JSON.stringify(query));
+        cFunction();
+    } else {
+        console.log("Could not send data. Websocket is not open.");
+    }
 }
 
 function startGame() {
@@ -68,10 +77,6 @@ function startGame3() {
         $(location).prop('href', '/gameScreen');
     }
 }
-
-
-
-
 
 $(document).ready(function() {
     connectWebSocket()
