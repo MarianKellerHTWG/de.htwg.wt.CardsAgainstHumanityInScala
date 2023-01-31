@@ -17,34 +17,9 @@ import scala.swing.Reactor
 
 @Singleton
 class CahController @Inject()(cc: ControllerComponents)(implicit system: ActorSystem, mat: Materializer) extends AbstractController(cc) {
-  val gameController = CaHMain.controller
+  var gameController = CaHMain.controller
 
   def gameState = gameController.getCurrentStateAsString()
-
-  def home = Action {
-    Ok(print())
-  }
-
-  def about(): Action[AnyContent] = Action {
-    Ok(views.html.index())
-  }
-
-  def print(): Html = {
-    views.html.cah(controller)
-  }
-
-  def startGame: Action[AnyContent] = Action {
-    Ok(views.html.newGame(controller))
-  }
-
-  def gameScreen: Action[AnyContent] = Action {
-    Ok(views.html.gameScreen(controller))
-  }
-
-  def eval(input: String): Action[AnyContent] = Action {
-    gameController.eval(input)
-    Ok(gameState)
-  }
 
 
   def socket = WebSocket.accept[JsValue, JsValue] { request =>
